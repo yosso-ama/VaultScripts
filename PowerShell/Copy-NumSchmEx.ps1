@@ -279,7 +279,7 @@ if ($choice -in 1, 3)
     return
 }
 
-Write-Host "Now it's time for you to modify the new numbering scheme in Vault, for example, to add some new items to the predefined list fields in the scheme. After you have finished, return to this window and continue.`n"
+Write-Host "Now you can modify the new numbering scheme in Vault, for example, to add some new items to the predefined list fields in the scheme. After you have finished, return to this window and continue.`n"
 Write-Host -ForegroundColor Red "DO NOT CLOSE THIS WINDOW!`n"
 Write-Host -NoNewline "Press any key to continue ... "
 Read-Host
