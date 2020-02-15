@@ -3,7 +3,7 @@
 Copy or modify numbering scheme in vault
 
 .DESCRIPTION
-The Copy-NumSchmEx.ps1 script let the user select a numbering scheme in vault and copy or reset it, preserving used numbers (requires SQL connection). The user can modify the numbering scheme before reserving numbers.
+The Copy-NumSchmEx.ps1 script let the user select a numbering scheme in vault and copy or reset it, preserving used numbers (requires SQL Server connection). The user can modify the numbering scheme before reserving numbers.
 
 .PARAMETER VaultUser
 Specifies the vault user name to login.
@@ -18,7 +18,7 @@ Specifies the vault server to connect.
 Specifies the vault database name to login.
 
 .PARAMETER SqlServer
-Specifies the SQL server to connect.
+Specifies the SQL Server to connect.
 
 .PARAMETER SqlUser
 Specifies the SQL user.
@@ -27,17 +27,17 @@ Specifies the SQL user.
 Specifies the SQL password.
 
 .PARAMETER VaultVersion
-Specifies the installed vault version.
+Specifies the installed vault client version.
 
 .EXAMPLE
 PS> .\Copy-NumSchmEx.ps1 -VaultUser administrator -VaultServer localhost -Vault Vault
-This example login to vault with no password, assuming SQL server is the same as vault server, using default SQL user and password. It is equivalent to the following:
+This example login to vault with no password, assuming SQL Server is the same as vault server, using default SQL user and password. It is equivalent to the following:
 
 PS> .\Copy-NumSchmEx.ps1 -VaultUser administrator -VaultServer localhost -Vault Vault -SqlServer localhost -SqlUser sa -SqlPassword AutodeskVault@26200 -VaultVersion 2019
 
 .EXAMPLE
 PS> .\Copy-NumSchmEx.ps1 -VaultUser administrator -VaultPassword P@ssw0rd -VaultServer VaultSvr -Vault Vault -SqlServer SQLSvr -SqlUser sa -SqlPassword AutodeskVault@26200 -VaultVersion 2018
-This example login to vault with password, assuming installed vault version is 2018. SQL server is a different server, using default sql user and password.
+This example login to vault with password, assuming installed vault version is 2018. SQL Server is a different server, using default sql user and password.
 
 #>
 
@@ -143,9 +143,9 @@ Write-Host -ForegroundColor Green "$($numSchm.Name)`n"
 
 Write-Host "What do you want to do?`n"
 Write-Host " 1. Copy the numbering scheme"
-Write-Host " 2. Copy the numbering scheme, and preserve used numbers from it (require SQL connection)"
+Write-Host " 2. Copy the numbering scheme, and preserve used numbers from it (require SQL Server connection)"
 Write-Host " 3. Delete and recreate the numbering scheme (i.e. reset the scheme)"
-Write-Host " 4. Delete and recreate the numbering scheme, and preserve all used numbers (require SQL connection)`n"
+Write-Host " 4. Delete and recreate the numbering scheme, and preserve all used numbers (require SQL Server connection)`n"
 
 do
 {
@@ -198,45 +198,58 @@ if ($choice -in 2, 4)
 
     $connString = "Server=$SqlServer\AutodeskVault;Database=$Vault;User ID=$SqlUser;Password=$SqlPassword"
 
-    $conn = New-Object System.Data.SqlClient.SqlConnection($connString)
     try
     {
-        $conn.Open()
-    }
-    catch
-    {
-        Write-Host -ForegroundColor Red "Failed to connect to SQL server, cannot proceed.`n"
-        return
-    }
-
-    if ($conn.State -eq "Open")
-    {
-        $sqlCmd = $conn.CreateCommand()
-        $sqlCmd.CommandText = "SELECT * FROM dbo.SchemePattern WHERE SchemeId = '$schmId'"
-
-        $reader = $sqlCmd.ExecuteReader()
-        $patterns = New-Object 'System.Collections.Generic.List[psobject]'
-        while ($reader.Read())
+        $conn = New-Object System.Data.SqlClient.SqlConnection($connString)
+        try
         {
-            $pattern = New-Object psobject -Property @{
-                Prefix       = $reader[0];
-                Suffix       = $reader[1];
-                SchemeId     = $reader[2];
-                NextNum      = $reader[3];
-                AutoFieldLen = $reader[4]
-            }
-            $patterns.Add($pattern)
+            $conn.Open()
         }
-        $reader.Close()
-        $conn.Close()
-
-        if (!$patterns)
+        catch
         {
-            Write-Host -ForegroundColor Red "The numbering scheme you selected is not used yet.`n"
+            Write-Host -ForegroundColor Red "Failed to connect to SQL Server, cannot proceed.`n"
             return
         }
 
-        Write-Host -ForegroundColor Green "Successfully retrieved used numbers from SQL Server.`n"
+        $sqlCmd = $conn.CreateCommand()
+        $sqlCmd.CommandText = "SELECT * FROM dbo.SchemePattern WHERE SchemeId = $schmId"
+        try
+        {
+            $reader = $sqlCmd.ExecuteReader()
+            $patterns = New-Object 'System.Collections.Generic.List[psobject]'
+            while ($reader.Read())
+            {
+                $pattern = New-Object psobject -Property @{
+                    Prefix       = $reader["Prefix"]
+                    Suffix       = $reader["Suffix"]
+                    SchemeId     = $reader["SchemeId"]
+                    NextNum      = $reader["NextNum"]
+                    AutoFieldLen = $reader["AutoFieldLen"]
+                }
+                $patterns.Add($pattern)
+            }
+
+            if (!$patterns)
+            {
+                Write-Host -ForegroundColor Red "The numbering scheme you selected is not used yet.`n"
+                return
+            }
+
+            Write-Host -ForegroundColor Green "Successfully retrieved used numbers from SQL Server.`n"
+        }
+        finally
+        {
+            $reader.Close()
+        }
+    }
+    catch
+    {
+        Write-Host -ForegroundColor Red "Error occurred when querying SQL Server.`n"
+        return
+    }
+    finally
+    {
+        $conn.Close()
     }
 }
 
@@ -325,8 +338,8 @@ foreach ($field in $fields)
         "Delimiter" { $regex += [regex]::Escape($field.DelimVal) }
         "WorkgroupLabel" { $regex += $field.Val }
         # "Autogenerated" { 
-        #     if ($field.Zeropadding) { $regex += "(\d{$($field.Len)})" }
-        #     else { $regex += "(\d{$($field.From.ToString().Length),$($field.Len)})" }
+        #     if ($field.Zeropadding) { $regex += "\d{$($field.Len)}" }
+        #     else { $regex += "\d{$($field.From.ToString().Length),$($field.Len)}" }
         # }
     }
 }
@@ -336,21 +349,21 @@ if ($patterns)
 {
     foreach ($pattern in $patterns)
     {
-        $str = $pattern.Prefix + $pattern.Suffix
-        if ($numSchm.ToUpper -and $str -imatch $regex -or !$numSchm.ToUpper -and $str -cmatch $regex)
+        $numberParts = $pattern.Prefix + $pattern.Suffix
+        $numberPreview = $pattern.Prefix + [string]::new('#', $AutogenField.Len) + $pattern.Suffix
+        if ($numberParts -imatch $regex)
         {
             $fieldValues = $Matches[1..($Matches.Count - 1)]
             $count = $pattern.NextNum - $AutogenField.From
             $strArray = New-Object Autodesk.Connectivity.WebServices.StringArray -Property @{ Items = $fieldValues }
 
-            $str = $pattern.Prefix + [string]::new('#', $AutogenField.Len) + $pattern.Suffix
-            Write-Host "Generating numbers for pattern $str ..."
+            Write-Host "Generating numbers for pattern $numberPreview ..."
             $numbers = $documentService.GenerateFileNumbers(@($newSchm.SchmID) * $count, @($strArray) * $count)
             Write-Host "Total $count numbers generated, the last generated number is $($numbers[-1]).`n"
         }
         else
         {
-            Write-Warning "Pattern $str is not generated.`n"
+            Write-Host -ForegroundColor Yellow "Warning: Pattern $numberPreview is not generated.`n"
         }
     }
 
