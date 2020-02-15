@@ -152,10 +152,18 @@ do
     try
     {
         [int]$choice = Read-Host -Prompt "Your choice"
-        if ($choice -in 2, 4 -and !$numSchm.IsInUse)
+        if ($choice -in 2, 4)
         {
-            Write-Host -ForegroundColor Yellow "`nThe numbering scheme you selected is not used yet.`n"
-            $choice = -1
+            if (!$numSchm.IsInUse)
+            {
+                Write-Host -ForegroundColor Yellow "`nThe numbering scheme you selected is not used yet.`n"
+                $choice = -1
+            }
+            elseif ($numSchm.FieldArray | Where-Object FieldTyp -eq "WorkgroupLabel")
+            {
+                Write-Host -ForegroundColor Yellow "`nOperation is not supported for numbering scheme with a WorkgroupLabel field.`n"
+                $choice = -1
+            }
         }
     }
     catch { }
