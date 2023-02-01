@@ -52,7 +52,7 @@ Param(
     [string]$SqlServer = $VaultServer,
     [string]$SqlUser = "sa",
     [string]$SqlPassword = "AutodeskVault@26200",
-    [string]$VaultVersion = "2019"
+    [string]$VaultVersion = "2023"
 )
 
 Write-Host
@@ -62,6 +62,10 @@ $buildNumbers = @{
     "2017" = "22.0"
     "2018" = "23.0"
     "2019" = "24.0"
+    "2020" = "25.0"
+    "2021" = "26.0"
+    "2022" = "27.0"
+    "2023" = "28.0"
 }
 
 if ($VaultVersion -notin $buildNumbers.Keys)
